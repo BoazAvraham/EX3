@@ -2,13 +2,15 @@ import math
 from collections import defaultdict, Counter
 import numpy as np
 
+from graphs import save_log_l_g, save_perplex
+
 
 class Document:
 
-    def __init__(self, histogram, cluster, index):
+    def __init__(self, histogram, index):
         self.histogram = histogram
         self.words_count = len(histogram)
-        self.cluster = cluster
+        # self.cluster = cluster
         self.index = index
         self.Zi_list = []
 
@@ -18,7 +20,7 @@ class Document:
 
 class Cluster:
 
-    def __init__(self, index):
+    def __init__(self, index, wti, docs_size):
         self.histogram = None
         self.prob = None
         self.index = index
@@ -48,9 +50,8 @@ class Cluster:
 K = 10
 eps = 0.001
 LAMBDA = 0.06  # from ex2
-
-
-
+CLUSTERSIZE = 9
+RARE = 3 # threshold for filtering rare words
 
 
 class ExpectationMaximizationSmoothed:
@@ -58,78 +59,84 @@ class ExpectationMaximizationSmoothed:
     def __init__(self, mixed_docs_histograms, all_doc_words):
         self.all_words_hist = Counter(all_doc_words)
         self.all_words = self.all_words_hist.keys()
+        self.docs = [Document(mixed_docs_histograms[i], i) for i in range(len(mixed_docs_histograms))]
+        self.delete_rare_words()
 
         self.vocab_size = len(self.all_words_hist)
-        self.docs = []
-        self.clusters = [Cluster(i) for i in range(9)]
-        self.Py = - math.inf
-        for i in range(len(mixed_docs_histograms)):
-            cluster = self.clusters[i % 9]
-            new_doc = Document(mixed_docs_histograms[i], cluster, i)
-            self.docs.append(new_doc)
-            cluster.add(new_doc)
-        # this is the prob matrix. at the begining the probability is 1 for every doc t in cluster %t
-        self.wti = np.zeros((len(self.docs), 9))
-        self.pik = np.array([{}, {}, {}, {}, {}, {}, {}, {}, {}])
+
+        # this is the prob matrix. at the beginning the probability is 1 for every doc t in cluster %t
+        self.wti = np.zeros((len(self.docs), CLUSTERSIZE))
+        self.pik = np.array([{} for i in range(CLUSTERSIZE)])
         for t in range(len(self.docs)):
-            self.wti[t][t % 9] = 1
+            self.wti[t][t % CLUSTERSIZE] = 1
 
+        self.clusters = [Cluster(i, self.wti, len(self.docs)) for i in range(CLUSTERSIZE)]
 
-        for x in self.clusters:
-            x.update_histogram()
+        self.alpha = np.array([(sum(self.wti[t][i] for t in range(len(self.docs))) / \
+                                len(self.docs)) for i in range(CLUSTERSIZE)])
 
-        # calculate pik
-        self.Pik()
-        prev_Py = self.Py
-        while prev_Py < 100:
-            self.start_training()
-            prev_Py = self.Py
-            self.Py = self.Y_teta()
-            if self.Py < prev_Py:
-                raise Exception("the Likelihood decrease, we have a bug!")
-            print('new P(y|teta) = ' + str(self.Py))
+        self.Py = - math.inf
+
+    def delete_rare_words(self):
+        """In order to reduce time and place complexity you should
+            filter rare words. A rare word, for this exercise, is a word that occurs 3 times or less in
+            the input corpus """
+        all_words_items = list(self.all_words_hist.items())
+        for word, count in all_words_items:
+            if count <= RARE:
+                del self.all_words_hist[word]
+        for doc in self.docs:
+            doc_keys = list(doc.histogram.keys())
+            for word in doc_keys:
+                if word not in self.all_words_hist:
+                    del doc.histogram[word]
 
     def lidProbability(self, c_x, S):
         """c_x- number of occurrences of the event in set. S is the set size.
          V= vocab size"""
         return (c_x + LAMBDA) / (S + LAMBDA * self.vocab_size)
 
+    def perplexity(self, logLike):
+        return math.exp((-1 / len(self.docs)) * logLike)
+        # logSum = 0
+        # for w in self.all_words:
+        #     p_w = self.probability(self.all_words_hist[w], LAMBDA)
+        #     logSum += math.log(p_w)
+        # return math.exp(-logSum / self.vocab_size)
+
     def start_training(self):
-        # probs = dict()
         # E step
-
-
         # calculate wti
         for t in range(len(self.docs)):
-            self.docs[t].Zi_list = [self.Zi(t, i) for i in range(len(self.clusters))]
+            self.docs[t].Zi_list = [self.Zi(t, i) for i in range(CLUSTERSIZE)]
             max_zi = max(self.docs[t].Zi_list)
             self.wti[t] = [self.Xi_Yt(i, t, max_zi) for i in
-                        range(len(self.clusters))]  # for every doc yt we calculate p(xi|yt)
+                           range(CLUSTERSIZE)]  # for every doc yt we calculate p(xi|yt)
             # probs[t] = [self.Xi_Yt(i, t, max_zi) for i in
             #             range(len(self.clusters))]  # for every doc yt we calculate p(xi|yt)
         # M step
-        for x in self.clusters:
-            # 1/N * ∑w_ti
-            candidate = sum((self.wti[t][x.index] for t in range(len(self.docs)))) / len(self.docs)
-            # candidate = sum((probs[wti][x.index] for wti in probs)) / len(self.docs)
-            # Smoothing in the M step
-            x.prob = candidate if candidate > eps else eps
 
-        s = sum((x.prob for x in self.clusters))
-        # calculation of p(x_i)
-        for x in self.clusters:
-            x.prob = x.prob / s
-
+        # calculate new alpha i with given wti
+        self.alpha_i()
         # calculate new pik with given wti
         self.Pik()
 
         # for x in self.clusters:
         #     x.update_histogram()
 
+    def alpha_i(self):
+        for i in range(CLUSTERSIZE):
+            # 1/N * ∑w_ti
+            candidate = sum((self.wti[t][i] for t in range(len(self.docs)))) / len(self.docs)
+            # Smoothing in the M step
+            self.alpha[i] = candidate if candidate > eps else eps
+        # need to make sure that sum( αi) = 1. so αj' = αj / sum(αi)
+        s = np.sum(self.alpha)
+        # calculation of p(x_i)
+        self.alpha = self.alpha / s
+
     def Pik(self):
-        # naive
-        # pik_list = []
-        for i in range(9):
+        for i in range(CLUSTERSIZE):
             denominator = sum((len(self.docs[t]) * self.wti[t][i]) for t in range(len(self.docs)))
             lid_smooth_den = denominator + self.vocab_size * LAMBDA
             for t in range(len(self.docs)):
@@ -140,28 +147,18 @@ class ExpectationMaximizationSmoothed:
                         self.pik[i][k] = LAMBDA / lid_smooth_den
                         self.pik[i][k] += (self.docs[t].histogram[k] * self.wti[t][i]) / lid_smooth_den
 
-            # for k in self.all_words:
-            #     nominator = sum((self.docs[t].histogram[k] * self.wti[t][i]) for t in range(len(self.docs)))
-            #     lid = self.lidProbability(nominator, denominator)
-            #     pik_dict[k] = lid
-            # self.pik[i] = pik_dict
-        # self.pik = np.array(pik_list)
-
-    def Xi(self, i):
-        return len(self.clusters[i]) / len(self.docs)
+    # def Xi(self, i):
+    #     return len(self.clusters[i]) / len(self.docs)
 
     def Zi(self, t, i):
         ws = self.docs[t].histogram  # this is the histogram of doc number t
-        ws_keys = ws.keys()
-        ws_values = np.array(list(ws.values()))
-        x = self.clusters[i]  # this is cluster i, x[w] is the combined histogram of cluster i
 
         # in the log we ignore 0 because we applied lidstone.
         right_hand = sum((ws[w] * np.log(self.pik[i][w]) for w in ws))
 
         # right_hand = np.sum(np.multiply(ws_values, np.log(pik)))
         # right_hand = sum((ws[w] * np.log(x[w] / len(x)) for w in ws if x[w] > 0))
-        left_hand = np.log(self.Xi(i))
+        left_hand = np.log(self.alpha[i])
         return right_hand + left_hand
 
     def Xi_Yt(self, i, t, m):
@@ -170,7 +167,7 @@ class ExpectationMaximizationSmoothed:
         if self.docs[t].Zi_list[i] - m < -K:
             return 0
         exp = lambda i: np.exp(self.docs[t].Zi_list[i] - m)
-        denominator = sum((exp(j) for j in range(9) if self.docs[t].Zi_list[j] - m >= -K))
+        denominator = sum((exp(j) for j in range(CLUSTERSIZE) if self.docs[t].Zi_list[j] - m >= -K))
         return exp(i) / denominator
 
     def lan_sum_Ezi(self, t):
@@ -178,7 +175,7 @@ class ExpectationMaximizationSmoothed:
         max_zi = max(self.docs[t].Zi_list)
         # T = len(self.docs[t])
         # print(self.docs[t].Zi_list)
-        for i in range(len(self.clusters)):
+        for i in range(CLUSTERSIZE):
             # power = self.docs[t].Zi_list[i] - pow(max_zi, t)
             power = self.docs[t].Zi_list[i] - max_zi
             if power >= -K:

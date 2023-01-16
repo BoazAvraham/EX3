@@ -3,6 +3,19 @@ from collections import Counter
 
 FILTER_BELOW = 3
 
+def get_all_topics(file_name):
+    readFile = open(file_name, 'r')
+    all_topics = []
+    for line in readFile:
+        values = line.split()
+        if len(values) != 0:
+            # we want to skip the lines of the subjects and empty lines
+            all_topics += values
+    # for the confusion matrix
+    all_topics += ['size of cluster']
+    return all_topics
+
+
 def getAllWords(file):
     """read the file and compose a list of all the words in file
     words can appear more than one time"""
