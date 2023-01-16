@@ -4,6 +4,8 @@ from collections import Counter
 
 import ExpectiMax
 from getAllwords import getAllWordsPerDoc
+from getAllwords import getAllWords
+
 from myInit import myInit
 
 
@@ -33,6 +35,7 @@ if __name__ == '__main__':
 
     #### 1 Init
     allwords = getAllWordsPerDoc(details.developmentSetFileName)
+    all_doc_words = getAllWords(details.developmentSetFileName)
     mixed_histograms = [Counter(allwords[i]) for i in range(len(allwords))]
-    algo = ExpectiMax.ExpectationMaximizationSmoothed(mixed_histograms)
+    algo = ExpectiMax.ExpectationMaximizationSmoothed(mixed_histograms, all_doc_words)
 
