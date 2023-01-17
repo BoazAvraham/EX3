@@ -32,9 +32,9 @@ def writeToOutput():
 def start_to_train(algo):
     # init variables for table
     prev_Py = algo.Py
-    iteration = [i for i in range(1)]
+    iteration = [i for i in range(25)]
     log_l = []
-    # perplex = []
+    perplex = []
     iter = 0
 
     # calculate pik
@@ -50,14 +50,14 @@ def start_to_train(algo):
 
         # graph details
         log_l.append(algo.Py)
-        # perplex.append(self.perplexity(self.Py))
+        perplex.append(algo.perplexity(algo.Py))
         iter += 1
-        if iter == 1:
+        if iter == 25:
             break
 
     # save graphs
     save_log_l_g(iteration, log_l)
-    # save_perplex(iteration, perplex)
+    save_perplex(iteration, perplex)
 
 
 
@@ -72,11 +72,12 @@ if __name__ == '__main__':
     mixed_histograms = [Counter(allwords[i]) for i in range(len(allwords))]
 
     all_topics = get_all_topics(details.topics_file_name)
-    algo = ExpectiMax.ExpectationMaximizationSmoothed(mixed_histograms, all_doc_words, topicsPerDoc)
+    algo = ExpectiMax.ExpectationMaximizationSmoothed(mixed_histograms, allwords, all_doc_words, topicsPerDoc)
     # start train
     start_to_train(algo)
     # confusion mat
-    algo.generate_conf_mat(all_topics)
+    conf_mat = algo.generate_conf_mat(all_topics)
+    algo.accuracy(conf_mat)
 
     # con_mat = np.array((ExpectiMax.CLUSTERSIZE, len(all_topics)))
     # for i in range(ExpectiMax.CLUSTERSIZE):
