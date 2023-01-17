@@ -7,7 +7,6 @@ from getAllwords import getAllWordsPerDoc, get_all_topics
 from getAllwords import getAllWords
 from graphs import save_log_l_g, save_perplex
 
-from myInit import myInit
 import numpy as np
 
 
@@ -33,7 +32,7 @@ def writeToOutput():
 def start_to_train(algo):
     # init variables for table
     prev_Py = algo.Py
-    iteration = [i for i in range(25)]
+    iteration = [i for i in range(1)]
     log_l = []
     # perplex = []
     iter = 0
@@ -53,7 +52,7 @@ def start_to_train(algo):
         log_l.append(algo.Py)
         # perplex.append(self.perplexity(self.Py))
         iter += 1
-        if iter == 25:
+        if iter == 1:
             break
 
     # save graphs
@@ -68,15 +67,17 @@ if __name__ == '__main__':
     details = Details()
 
     #### 1 Init
-    allwords = getAllWordsPerDoc(details.developmentSetFileName)
+    allwords, topicsPerDoc = getAllWordsPerDoc(details.developmentSetFileName)
     all_doc_words = getAllWords(details.developmentSetFileName)
     mixed_histograms = [Counter(allwords[i]) for i in range(len(allwords))]
 
     all_topics = get_all_topics(details.topics_file_name)
-    algo = ExpectiMax.ExpectationMaximizationSmoothed(mixed_histograms, all_doc_words)
+    algo = ExpectiMax.ExpectationMaximizationSmoothed(mixed_histograms, all_doc_words, topicsPerDoc)
     # start train
     start_to_train(algo)
     # confusion mat
+    algo.generate_conf_mat(all_topics)
+
     # con_mat = np.array((ExpectiMax.CLUSTERSIZE, len(all_topics)))
     # for i in range(ExpectiMax.CLUSTERSIZE):
     #     for topic

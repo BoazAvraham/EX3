@@ -1,17 +1,15 @@
 import math
-from collections import defaultdict, Counter
+from collections import Counter
 import numpy as np
-
-from graphs import save_log_l_g, save_perplex
+import pandas as pd
 
 
 class Document:
 
-    def __init__(self, histogram, index):
+    def __init__(self, histogram, topics):
         self.histogram = histogram
         self.words_count = len(histogram)
-        # self.cluster = cluster
-        self.index = index
+        self.topics = topics
         self.Zi_list = []
 
     def __len__(self):
@@ -51,28 +49,28 @@ K = 10
 eps = 0.001
 LAMBDA = 0.06  # from ex2
 CLUSTERSIZE = 9
-RARE = 3 # threshold for filtering rare words
+RARE = 3  # threshold for filtering rare words
 
 
 class ExpectationMaximizationSmoothed:
 
-    def __init__(self, mixed_docs_histograms, all_doc_words):
+    def __init__(self, mixed_docs_histograms, all_doc_words, all_docs_topics):
         self.all_words_hist = Counter(all_doc_words)
         self.all_words = self.all_words_hist.keys()
-        self.docs = [Document(mixed_docs_histograms[i], i) for i in range(len(mixed_docs_histograms))]
+        self.docs = [Document(mixed_docs_histograms[i], all_docs_topics[i]) for i in range(len(mixed_docs_histograms))]
         self.delete_rare_words()
 
         self.vocab_size = len(self.all_words_hist)
 
         # this is the prob matrix. at the beginning the probability is 1 for every doc t in cluster %t
         self.wti = np.zeros((len(self.docs), CLUSTERSIZE))
-        self.pik = np.array([{} for i in range(CLUSTERSIZE)])
         for t in range(len(self.docs)):
             self.wti[t][t % CLUSTERSIZE] = 1
 
+        self.pik = np.array([{} for i in range(CLUSTERSIZE)])
         self.clusters = [Cluster(i, self.wti, len(self.docs)) for i in range(CLUSTERSIZE)]
 
-        self.alpha = np.array([(sum(self.wti[t][i] for t in range(len(self.docs))) / \
+        self.alpha = np.array([(sum(self.wti[t][i] for t in range(len(self.docs))) /
                                 len(self.docs)) for i in range(CLUSTERSIZE)])
 
         self.Py = - math.inf
@@ -90,6 +88,22 @@ class ExpectationMaximizationSmoothed:
             for word in doc_keys:
                 if word not in self.all_words_hist:
                     del doc.histogram[word]
+
+    def generate_conf_mat(self, topics):
+        con_mat = np.zeros((CLUSTERSIZE, len(topics) + 1))
+        for doc_i in range(len(self.docs)):
+            selected_topic = np.argmax(self.wti[doc_i])  # the cluster index with the highest probability
+            con_mat[selected_topic][len(topics)] += 1  # number of articles that were assigned to this cluster
+            for topic in self.docs[doc_i].topics:
+                con_mat[selected_topic][topics.index(topic)] += 1  # Mij= num of articles in jth topic in ith cluster
+        topics += ['cluster_size']
+
+        data = {topic: np.flip(con_mat[:, topics.index(topic)]) for topic in topics}
+        df = pd.DataFrame(data, index=[str(i) for i in range(CLUSTERSIZE - 1, -1, -1)])
+        df = df.convert_dtypes() # convert float to int
+        df.to_csv('con_matrix.csv')
+        print(df)
+
 
     def lidProbability(self, c_x, S):
         """c_x- number of occurrences of the event in set. S is the set size.

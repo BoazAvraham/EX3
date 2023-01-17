@@ -12,7 +12,6 @@ def get_all_topics(file_name):
             # we want to skip the lines of the subjects and empty lines
             all_topics += values
     # for the confusion matrix
-    all_topics += ['size of cluster']
     return all_topics
 
 
@@ -23,7 +22,7 @@ def getAllWords(file):
     allWords = []
     for line in readFile:
         values = line.split()
-        if len(values) != 0 and values[0] != "<TRAIN" and values[0] != "<TEST":
+        if len(values) != 0 and values[0] != "<TRAIN":
             # we want to skip the lines of the subjects and empty lines
             allWords += values
     return allWords
@@ -32,21 +31,15 @@ def getAllWords(file):
 def getAllWordsPerDoc(file):
     """read the file and compose a list of all the words in file per doc
     words can appear more than one time"""
-    counter = Counter(getAllWords(file))
-    filter_set = {pair[0] for pair in counter.items() if pair[1] <= FILTER_BELOW}
-
     readFile = open(file, 'r')
     wordsPerDoc = []
+    topicsPerDoc = []
     for line in readFile:
-        values = line.split()
-        doc_index = -1
+        values = line.replace('>\n', '\n')
+        values = values.split()
         if len(values) != 0:
             if values[0] != "<TRAIN":
-                #wordsPerDoc[doc_index][:] = [x for x in wordsPerDoc[doc_index] if x not in filter_set]
-                wordsPerDoc[doc_index] += values
+                wordsPerDoc.append(values) # add all the wordsin doc to list
             else:
-                doc_index += 1
-                wordsPerDoc.append([])
-
-
-    return wordsPerDoc
+                topicsPerDoc.append(values[2:]) #add all the topics in docs per list
+    return wordsPerDoc, topicsPerDoc
