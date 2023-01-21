@@ -51,6 +51,7 @@ class ExpectationMaximizationSmoothed:
 
     def __init__(self, mixed_docs_histograms, allwords, all_doc_words, all_docs_topics):
         self.all_words_hist = Counter(all_doc_words)
+        self.total_words_num = len(all_doc_words)
         self.all_words = self.all_words_hist.keys()
         self.docs = [Document(mixed_docs_histograms[i], len(allwords[i]), all_docs_topics[i]) for i in range(len(mixed_docs_histograms))]
         self.delete_rare_words()
@@ -58,15 +59,19 @@ class ExpectationMaximizationSmoothed:
         self.vocab_size = len(self.all_words_hist)
 
         # this is the prob matrix. at the beginning the probability is 1 for every doc t in cluster %t
+        # prob for doc t given cluster i
         self.wti = np.zeros((len(self.docs), CLUSTERSIZE))
         for t in range(len(self.docs)):
             self.wti[t][t % CLUSTERSIZE] = 1
 
+        # prob for word k given cluster i
         self.pik = np.array([{} for i in range(CLUSTERSIZE)])
 
+        # prob of clusters
         self.alpha = np.array([(sum(self.wti[t][i] for t in range(len(self.docs))) /
                                 len(self.docs)) for i in range(CLUSTERSIZE)])  # in the beginning its uniform
 
+        # prob of our documents
         self.Py = - math.inf
 
     def delete_rare_words(self):
@@ -101,12 +106,12 @@ class ExpectationMaximizationSmoothed:
         print(df)
         return con_mat
 
-    def accuracy(self, con_mat):
+    def accuracy(self, con_mat, topics):
         # accuracy
-        sum_max = 0
-        for i in range(CLUSTERSIZE):
-            sum_max += np.argmax(con_mat[i][:CLUSTERSIZE])
-        print(sum_max / len(self.docs))
+        cluster_topics_index = [np.argmax(con_mat[i][:CLUSTERSIZE]) for i in range(CLUSTERSIZE)]
+        cluster_topics = [topics[i] for i in cluster_topics_index]
+        s = sum (cluster_topics[np.argmax(t.Zi_list)] in t.topics for t in self.docs)
+        print("accuracy: " + str(s / len(self.docs)))
 
     def lidProbability(self, c_x, S):
         """c_x- number of occurrences of the event in set. S is the set size.
@@ -114,8 +119,7 @@ class ExpectationMaximizationSmoothed:
         return (c_x + LAMBDA) / (S + LAMBDA * self.vocab_size)
 
     def perplexity(self, logLike):
-        ## TODO not sure about the the number of words in the perplexity
-        return math.exp((-1 / self.vocab_size) * logLike)
+        return math.exp((-1 / self.total_words_num) * logLike)
 
 
     def start_training(self):
@@ -124,8 +128,7 @@ class ExpectationMaximizationSmoothed:
         for t in range(len(self.docs)):
             self.docs[t].Zi_list = [self.Zi(t, i) for i in range(CLUSTERSIZE)]
             max_zi = max(self.docs[t].Zi_list)
-            self.wti[t] = [self.Xi_Yt(i, t, max_zi) for i in
-                           range(CLUSTERSIZE)]  # for every doc yt we calculate p(xi|yt)
+            self.wti[t] = [self.Xi_Yt(i, t, max_zi) for i in range(CLUSTERSIZE)]  # for every doc yt we calculate p(xi|yt)
 
         # M step
 
@@ -145,17 +148,21 @@ class ExpectationMaximizationSmoothed:
         # calculation of p(x_i)
         self.alpha = self.alpha / s
 
+    # Calc the probs for word k in cluster i
     def Pik(self):
         for i in range(CLUSTERSIZE):
             denominator = sum((self.docs[t].doc_size * self.wti[t][i]) for t in range(len(self.docs)))
-            lid_smooth_den = denominator + self.vocab_size * LAMBDA
+            self.pik[i] = {}
             for t in range(len(self.docs)):
                 for k in self.docs[t].histogram:
+                    # self.pik[i][k] = (self.docs[t].histogram[k] * self.wti[t][i] + LAMBDA) / lid_smooth_den
                     if k in self.pik[i].keys(): # if pik[i][k] exists. we need to add to it
-                        self.pik[i][k] += self.docs[t].histogram[k] * self.wti[t][i] / lid_smooth_den
+                        self.pik[i][k] += self.docs[t].histogram[k] * self.wti[t][i]
                     else:
-                        self.pik[i][k] = LAMBDA / lid_smooth_den
-                        self.pik[i][k] += (self.docs[t].histogram[k] * self.wti[t][i]) / lid_smooth_den
+                        self.pik[i][k] = LAMBDA
+                        self.pik[i][k] += (self.docs[t].histogram[k] * self.wti[t][i])
+            lid_smooth_den = denominator + len(self.pik[i]) * LAMBDA
+            self.pik[i] = {k :v/lid_smooth_den for k,v in self.pik[i].items()}
 
     def Zi(self, t, i):
         ws = self.docs[t].histogram  # this is the histogram of doc number t
@@ -185,10 +192,7 @@ class ExpectationMaximizationSmoothed:
         return max_zi + np.log(sum_zis)
 
     def Y_teta(self):
-        ln_L = sum((self.lan_sum_Ezi(t) for t in range(len(self.docs))))
+        ln_L = sum(self.lan_sum_Ezi(t) for t in range(len(self.docs)))
         return ln_L
 
 
-if __name__ == '__main__':
-    ExpectationMaximizationSmoothed()
-# okay decompiling D:\MASTER_DEGREE\RESTORED\ExpectiMax.cpython-37.pyc

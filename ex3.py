@@ -32,7 +32,7 @@ def writeToOutput():
 def start_to_train(algo):
     # init variables for table
     prev_Py = algo.Py
-    iteration = [i for i in range(25)]
+    iteration = [i for i in range(30)]
     log_l = []
     perplex = []
     iter = 0
@@ -52,7 +52,7 @@ def start_to_train(algo):
         log_l.append(algo.Py)
         perplex.append(algo.perplexity(algo.Py))
         iter += 1
-        if iter == 25:
+        if iter == len(iteration):
             break
 
     # save graphs
@@ -77,7 +77,7 @@ if __name__ == '__main__':
     start_to_train(algo)
     # confusion mat
     conf_mat = algo.generate_conf_mat(all_topics)
-    algo.accuracy(conf_mat)
+    algo.accuracy(conf_mat,all_topics)
 
     # con_mat = np.array((ExpectiMax.CLUSTERSIZE, len(all_topics)))
     # for i in range(ExpectiMax.CLUSTERSIZE):
